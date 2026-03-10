@@ -223,5 +223,5 @@ def delete_project(pid: int, db: Session = Depends(get_db)):
 
     return {"message": f"Project {pid} deleted successfully"}
 
-from sqlalchemy import or_
+
 
