@@ -5,13 +5,19 @@ from models.project import Project
 
 def recommend_employees_service(pid, db):
 
+    # -------------------------------------------------
+    # Check if project exists
+    # -------------------------------------------------
     project = db.query(Project).filter(Project.pid == pid).first()
 
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # -------------------------------------------------
+    # SQL Query
+    # -------------------------------------------------
     query = text("""
-    
+
         -- Count number of required skills
         WITH skill_count AS (
             SELECT COUNT(*) AS total_skills
@@ -25,7 +31,7 @@ def recommend_employees_service(pid, db):
                 e.eid,
                 ps.skill_id,
 
-                (60.0 / sc.total_skills) *
+                (60.0 / NULLIF(sc.total_skills,0)) *
                 CASE
                     WHEN es.proficiency_level >= ps.required_level THEN 1
                     WHEN es.proficiency_level >= ps.required_level * 0.66 THEN 0.75
@@ -58,6 +64,17 @@ def recommend_employees_service(pid, db):
             e.lastname,
 
             COALESCE(est.total_skill_score,0) AS skill_score,
+
+            -- Experience info
+            e.experience AS employee_experience,
+            p.required_experience,
+
+            -- Domain info
+            e.domain AS employee_domain,
+            p.domain AS project_domain,
+
+            -- Availability info
+            e.availability,
 
             -- Experience score
             CASE
@@ -109,10 +126,66 @@ def recommend_employees_service(pid, db):
         LIMIT 10
     """)
 
+    # -------------------------------------------------
+    # Execute SQL Query
+    # -------------------------------------------------
     result = db.execute(query, {"pid": pid})
 
-    employees = [dict(row._mapping) for row in result]
+    employees = []
 
+    # -------------------------------------------------
+    # Build Explanation
+    # -------------------------------------------------
+    for row in result:
+
+        data = dict(row._mapping)
+
+        explanation = {}
+
+        # Skill explanation
+        explanation["skills"] = f"Skill match contributed {round(data['skill_score'],2)} points"
+
+        # Experience explanation
+        if data["employee_experience"] >= data["required_experience"]:
+            explanation["experience"] = (
+                f"Employee has {data['employee_experience']} years experience "
+                f"which meets the project requirement ({data['required_experience']} years)"
+            )
+        else:
+            explanation["experience"] = (
+                f"Employee has {data['employee_experience']} years experience "
+                f"but project requires {data['required_experience']} years"
+            )
+
+        # Domain explanation
+        if data["employee_domain"] == data["project_domain"]:
+            explanation["domain"] = "Employee domain matches project domain"
+        else:
+            explanation["domain"] = "Employee domain does not match project domain"
+
+        # Availability explanation
+        if data["availability"]:
+            explanation["availability"] = "Employee is available for assignment"
+        else:
+            explanation["availability"] = "Employee is currently unavailable"
+
+        employees.append({
+            "eid": data["eid"],
+            "firstname": data["firstname"],
+            "lastname": data["lastname"],
+            "scores": {
+                "skills": data["skill_score"],
+                "experience": data["experience_score"],
+                "domain": data["domain_score"],
+                "availability": data["availability_score"]
+            },
+            "final_score": data["final_score"],
+            "explanation": explanation
+        })
+
+    # -------------------------------------------------
+    # Final API Response
+    # -------------------------------------------------
     return {
         "project_id": pid,
         "recommendations": employees

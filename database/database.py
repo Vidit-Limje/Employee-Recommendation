@@ -1,12 +1,28 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
+import os
 
 # Import Base from models
 from models.base import Base
 
-DATABASE_URL = "postgresql://postgres.zvahajdrcphsxynrhfzw:Praibha%402004@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres"
+# ----------------------------------------------------
+# Load environment variables from .env file
+# ----------------------------------------------------
+load_dotenv()
 
+# ----------------------------------------------------
+# Get database URL from environment variable
+# ----------------------------------------------------
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL is None:
+    raise ValueError("DATABASE_URL is not set in environment variables")
+
+
+# ----------------------------------------------------
 # Create database engine
+# ----------------------------------------------------
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
@@ -14,7 +30,10 @@ engine = create_engine(
     max_overflow=10
 )
 
-# Session factory
+
+# ----------------------------------------------------
+# Create session factory
+# ----------------------------------------------------
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -22,7 +41,10 @@ SessionLocal = sessionmaker(
 )
 
 
+# ----------------------------------------------------
 # Dependency used in FastAPI routes
+# Provides DB session to endpoints
+# ----------------------------------------------------
 def get_db():
     db = SessionLocal()
     try:
