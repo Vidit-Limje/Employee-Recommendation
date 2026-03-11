@@ -60,29 +60,35 @@ Top employees are ranked based on the **highest final score**.
 
 ---
 # Project Structure
-project_root 
-│ 
-├── main.py 
-│ 
-├── database 
-│ └── database.py │ 
-├── models 
-│ 
-├── base.py │ 
-├── employee.py 
-│ 
-├── project.py 
-│ 
-├── schemas 
-│ ├── employee_schema.py 
-│ ├── project_schema.py │ 
-├── routes 
-│ ├── employee_routes.py 
-│ └── project_routes.py 
-│ ├── services 
-│ └── recommendation_service.py 
-│ ├── .env 
+
+```
+project_root
+│
+├── main.py
+│
+├── database
+│   └── database.py
+│
+├── models
+│   ├── base.py
+│   ├── employee.py
+│   └── project.py
+│
+├── schemas
+│   ├── employee_schema.py
+│   └── project_schema.py
+│
+├── routes
+│   ├── employee_routes.py
+│   └── project_routes.py
+│
+├── services
+│   └── recommendation_service.py
+│
+├── .env
 └── README.md
+```
+
 ---
 
 # Installation Guide
