@@ -121,6 +121,74 @@ project
 skill
 employee_skill
 project_skill
+
+SQL Code-
+```bash
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.employee (
+  eid integer NOT NULL DEFAULT nextval('employee_eid_seq'::regclass),
+  firstname text NOT NULL,
+  email text UNIQUE,
+  phone text,
+  domain text,
+  experience integer,
+  seniority text,
+  availability boolean,
+  lastname text,
+  CONSTRAINT employee_pkey PRIMARY KEY (eid)
+);
+CREATE TABLE public.employee_skill (
+  eid integer NOT NULL,
+  skill_id integer NOT NULL,
+  proficiency_level integer,
+  CONSTRAINT employee_skill_pkey PRIMARY KEY (eid, skill_id),
+  CONSTRAINT employee_skill_eid_fkey FOREIGN KEY (eid) REFERENCES public.employee(eid),
+  CONSTRAINT employee_skill_skill_id_fkey FOREIGN KEY (skill_id) REFERENCES public.skill(skill_id)
+);
+CREATE TABLE public.project (
+  pid integer NOT NULL DEFAULT nextval('project_pid_seq'::regclass),
+  name text NOT NULL,
+  client text,
+  domain text,
+  priority text,
+  status text,
+  required_experience integer DEFAULT 0,
+  CONSTRAINT project_pkey PRIMARY KEY (pid)
+);
+CREATE TABLE public.project_allocation (
+  eid integer NOT NULL,
+  pid integer NOT NULL,
+  assigned_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT project_allocation_pkey PRIMARY KEY (eid, pid),
+  CONSTRAINT project_allocation_eid_fkey FOREIGN KEY (eid) REFERENCES public.employee(eid),
+  CONSTRAINT project_allocation_pid_fkey FOREIGN KEY (pid) REFERENCES public.project(pid)
+);
+CREATE TABLE public.project_recommendation (
+  eid integer NOT NULL,
+  pid integer NOT NULL,
+  score double precision,
+  CONSTRAINT project_recommendation_pkey PRIMARY KEY (eid, pid),
+  CONSTRAINT project_recommendation_eid_fkey FOREIGN KEY (eid) REFERENCES public.employee(eid),
+  CONSTRAINT project_recommendation_pid_fkey FOREIGN KEY (pid) REFERENCES public.project(pid)
+);
+CREATE TABLE public.project_skill (
+  pid integer NOT NULL,
+  skill_id integer NOT NULL,
+  required_level integer,
+  CONSTRAINT project_skill_pkey PRIMARY KEY (pid, skill_id),
+  CONSTRAINT project_skill_pid_fkey FOREIGN KEY (pid) REFERENCES public.project(pid),
+  CONSTRAINT project_skill_skill_id_fkey FOREIGN KEY (skill_id) REFERENCES public.skill(skill_id)
+);
+CREATE TABLE public.skill (
+  skill_id integer NOT NULL DEFAULT nextval('skill_skill_id_seq'::regclass),
+  skill_name text UNIQUE,
+  CONSTRAINT skill_pkey PRIMARY KEY (skill_id)
+);
+```
+Database url-
+Copy Paste Transaction Pooler URL for Example
 ```bash
 postgresql://username:password@host:port/database
 ```
