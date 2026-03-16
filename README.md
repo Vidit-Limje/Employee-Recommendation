@@ -198,6 +198,62 @@ Start the FastAPI server:
 uvicorn main:app --reload
 ```
 
+# API Endpoints
+
+## Employee APIs
+
+| Method | Endpoint | Description |
+|------|------|------|
+| GET | `/employees/` | Get all employees |
+| POST | `/employees/` | Add a new employee |
+| GET | `/employees/search` | Search employee by name |
+| GET | `/employees/{eid}` | Get employee by ID |
+| PUT | `/employees/{eid}` | Update employee (full update) |
+| PATCH | `/employees/{eid}` | Update employee (partial update) |
+| DELETE | `/employees/{eid}` | Delete employee |
+
+---
+
+## Project APIs
+
+| Method | Endpoint | Description |
+|------|------|------|
+| GET | `/projects/` | Get all projects |
+| POST | `/projects/` | Create a new project |
+| GET | `/projects/{pid}` | Get project by ID |
+| PUT | `/projects/{pid}` | Update project |
+| DELETE | `/projects/{pid}` | Delete project |
+| GET | `/projects/{pid}/recommendations` | Get recommended employees for a project |
+
+---
+
+## API Base URL
+
+When running locally:
+
+```bash
+http://127.0.0.1:8000
+```
+
+### Example request:
+```bash
+GET http://127.0.0.1:8000/projects/1/recommendations
+```
+
+
+---
+
+## Interactive API Docs
+
+FastAPI automatically provides interactive documentation.
+
+| Tool | URL |
+|-----|-----|
+| Swagger UI | `http://127.0.0.1:8000/docs` |
+| ReDoc | `http://127.0.0.1:8000/redoc` |
+
 # 6. API Documentation
 Swagger UI
 http://127.0.0.1:8000/docs
+
+# API Endpoints
