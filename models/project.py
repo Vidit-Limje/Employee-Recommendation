@@ -1,34 +1,38 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy.orm import relationship
 from models.base import Base
 
 
 class Project(Base):
-    """
-    Project table
-
-    Stores project information used
-    to match employees with projects.
-    """
-
     __tablename__ = "project"
 
-    # Primary Key
     pid = Column(Integer, primary_key=True, index=True)
-
-    # Project name
-    name = Column(String)
-
-    # Client name
+    name = Column(String, nullable=False)
     client = Column(String)
-
-    # Project domain
-    # Example: AI, Web, Fintech
     domain = Column(String)
-
-    # Priority level
-    # Example: High, Medium, Low
     priority = Column(String)
-
-    # Project status
-    # Example: Active, Completed, Planning
     status = Column(String)
+    required_experience = Column(Integer, default=0)
+
+    # 🔗 Relationships
+
+    # Project ↔ ProjectSkill (one-to-many)
+    skills = relationship(
+        "ProjectSkill",
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )
+
+    # Project ↔ ProjectAllocation
+    allocations = relationship(
+        "ProjectAllocation",
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )
+
+    # Project ↔ Recommendation (optional but useful)
+    recommendations = relationship(
+        "ProjectRecommendation",
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )

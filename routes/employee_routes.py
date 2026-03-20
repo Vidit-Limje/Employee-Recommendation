@@ -37,6 +37,12 @@ from schemas.employee_schema import (
     # Used as response model to control output structure
     EmployeeResponse
 )
+from models.employee_skill import EmployeeSkill
+from models.skill import Skill
+from schemas.employee_skill_schema import (
+    EmployeeSkillCreate,
+    EmployeeSkillResponse
+)
 
 
 # -----------------------------------------------------------
@@ -376,3 +382,81 @@ def delete_employee(eid: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": f"Employee {eid} deleted successfully"}
+
+@router.post("/{eid}/skills", response_model=EmployeeSkillResponse)
+def add_skill_to_employee(
+    eid: int,
+    skill: EmployeeSkillCreate,
+    db: Session = Depends(get_db)
+):
+    # Check employee
+    emp = db.get(Employee, eid)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Check skill
+    skill_obj = db.get(Skill, skill.skill_id)
+    if not skill_obj:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    # Prevent duplicate
+    existing = db.query(EmployeeSkill).filter_by(
+        eid=eid,
+        skill_id=skill.skill_id
+    ).first()
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Skill already assigned")
+
+    emp_skill = EmployeeSkill(
+        eid=eid,
+        skill_id=skill.skill_id,
+        proficiency_level=skill.proficiency_level
+    )
+
+    db.add(emp_skill)
+    db.commit()
+    db.refresh(emp_skill)
+
+    return emp_skill
+
+@router.get("/{eid}/skills", response_model=list[EmployeeSkillResponse])
+def get_employee_skills(eid: int, db: Session = Depends(get_db)):
+
+    emp = db.get(Employee, eid)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return db.query(EmployeeSkill).filter_by(eid=eid).all()
+
+
+@router.delete("/{eid}/skills/{skill_id}")
+def remove_skill_from_employee(
+    eid: int,
+    skill_id: int,
+    db: Session = Depends(get_db)
+):
+    emp_skill = db.query(EmployeeSkill).filter_by(
+        eid=eid,
+        skill_id=skill_id
+    ).first()
+
+    if not emp_skill:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+
+    db.delete(emp_skill)
+    db.commit()
+
+    return {"message": "Skill removed"}
+
+
+@router.get("/{eid}/skills/details")
+def get_employee_skill_details(eid: int, db: Session = Depends(get_db)):
+
+    result = db.query(
+        EmployeeSkill.skill_id,
+        Skill.skill_name,
+        EmployeeSkill.proficiency_level
+    ).join(Skill).filter(EmployeeSkill.eid == eid).all()
+
+    return result

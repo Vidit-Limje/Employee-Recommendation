@@ -39,6 +39,13 @@ from schemas.project_schema import (
     # Controls what data is returned to the client
     ProjectResponse
 )
+from models.project_skill import ProjectSkill
+from models.skill import Skill
+
+from schemas.project_skill_schema import (
+    ProjectSkillCreate,
+    ProjectSkillResponse
+)
 
 
 # Import recommendation service
@@ -340,3 +347,147 @@ def recommend_employees(pid: int, db: Session = Depends(get_db)):
     # Call recommendation service
     # Service handles business logic and scoring
     return recommend_employees_service(pid, db)
+
+# -----------------------------------------------------------
+# ADD SKILL TO PROJECT
+# -----------------------------------------------------------
+
+@router.post("/{pid}/skills", response_model=ProjectSkillResponse)
+def add_project_skill(
+    pid: int,
+    data: ProjectSkillCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Add a required skill to a project.
+
+    Endpoint:
+    POST /projects/{pid}/skills
+
+    Request Body:
+    {
+        "skill_id": 1,
+        "required_level": 7
+    }
+    """
+
+    # Check if project exists
+    project = db.get(Project, pid)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check if skill exists
+    skill = db.get(Skill, data.skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    # Prevent duplicate entry
+    existing = db.query(ProjectSkill).filter(
+        ProjectSkill.pid == pid,
+        ProjectSkill.skill_id == data.skill_id
+    ).first()
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Skill already added")
+
+    # Create mapping
+    project_skill = ProjectSkill(
+        pid=pid,
+        skill_id=data.skill_id,
+        required_level=data.required_level
+    )
+
+    db.add(project_skill)
+    db.commit()
+    db.refresh(project_skill)
+
+    return project_skill
+
+
+# -----------------------------------------------------------
+# GET PROJECT SKILLS
+# -----------------------------------------------------------
+
+@router.get("/{pid}/skills", response_model=list[ProjectSkillResponse])
+def get_project_skills(pid: int, db: Session = Depends(get_db)):
+    """
+    Get all required skills for a project.
+
+    Endpoint:
+    GET /projects/{pid}/skills
+    """
+
+    # Check project exists
+    project = db.get(Project, pid)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    skills = db.query(ProjectSkill).filter(
+        ProjectSkill.pid == pid
+    ).all()
+
+    return skills
+
+# -----------------------------------------------------------
+# UPDATE PROJECT SKILL LEVEL
+# -----------------------------------------------------------
+
+@router.patch("/{pid}/skills/{skill_id}", response_model=ProjectSkillResponse)
+def update_project_skill(
+    pid: int,
+    skill_id: int,
+    data: ProjectSkillCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update required level for a project skill.
+
+    Endpoint:
+    PATCH /projects/{pid}/skills/{skill_id}
+    """
+
+    project_skill = db.query(ProjectSkill).filter(
+        ProjectSkill.pid == pid,
+        ProjectSkill.skill_id == skill_id
+    ).first()
+
+    if not project_skill:
+        raise HTTPException(status_code=404, detail="Skill not found for project")
+
+    project_skill.required_level = data.required_level
+
+    db.commit()
+    db.refresh(project_skill)
+
+    return project_skill
+
+
+# -----------------------------------------------------------
+# DELETE PROJECT SKILL
+# -----------------------------------------------------------
+
+@router.delete("/{pid}/skills/{skill_id}")
+def delete_project_skill(
+    pid: int,
+    skill_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Remove a skill from a project.
+
+    Endpoint:
+    DELETE /projects/{pid}/skills/{skill_id}
+    """
+
+    project_skill = db.query(ProjectSkill).filter(
+        ProjectSkill.pid == pid,
+        ProjectSkill.skill_id == skill_id
+    ).first()
+
+    if not project_skill:
+        raise HTTPException(status_code=404, detail="Skill not found for project")
+
+    db.delete(project_skill)
+    db.commit()
+
+    return {"message": "Skill removed from project"}
