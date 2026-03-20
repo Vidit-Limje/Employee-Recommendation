@@ -1,6 +1,8 @@
 #Deployment
 ### Link- 
 https://employee-recommendation-latest.onrender.com
+### API documentation-
+https://employee-recommendation-latest.onrender.com/docs
 
 # Employee Recommendation System
 
