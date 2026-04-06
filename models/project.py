@@ -22,17 +22,3 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan"
     )
-
-    # Project ↔ ProjectAllocation
-    allocations = relationship(
-        "ProjectAllocation",
-        back_populates="project",
-        cascade="all, delete-orphan"
-    )
-
-    # Project ↔ Recommendation (optional but useful)
-    recommendations = relationship(
-        "ProjectRecommendation",
-        back_populates="project",
-        cascade="all, delete-orphan"
-    )

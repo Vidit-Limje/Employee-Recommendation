@@ -11,7 +11,8 @@ from fastapi import FastAPI
 
 from routes.employee_routes import router as employee_router
 from routes.project_routes import router as project_router
-from routes.skill_routes import router as skill_router   # ✅ NEW
+from routes.skill_routes import router as skill_router
+from routes.auth_routes import router as auth_router   # ✅ NEW
 
 
 # -----------------------------------------------------
@@ -20,8 +21,8 @@ from routes.skill_routes import router as skill_router   # ✅ NEW
 
 app = FastAPI(
     title="Employee Recommendation System",
-    description="API to manage employees, skills, and recommend them for projects",
-    version="1.1"   # ✅ bumped version
+    description="API to manage employees, skills, and recommend them for projects with JWT Authentication",
+    version="2.0"   # ✅ bumped version
 )
 
 
@@ -29,14 +30,29 @@ app = FastAPI(
 # REGISTER ROUTES
 # -----------------------------------------------------
 
-# Employee Routes
+# 🔐 Auth Routes (IMPORTANT: keep first for clarity)
+app.include_router(auth_router)
+
+# 👨‍💼 Employee Routes
 app.include_router(employee_router)
 
-# Project Routes
+# 📁 Project Routes
 app.include_router(project_router)
 
-# Skill Routes (NEW)
+# 🧠 Skill Routes
 app.include_router(skill_router)
+
+
+# =====================================================
+# ROOT ENDPOINT (OPTIONAL BUT USEFUL)
+# =====================================================
+
+@app.get("/")
+def root():
+    return {
+        "message": "Employee Recommendation API with JWT Auth is running 🚀",
+        "docs": "/docs"
+    }
 
 
 # =====================================================
@@ -44,7 +60,13 @@ app.include_router(skill_router)
 # =====================================================
 
 """
-EMPLOYEE APIs
+🔐 AUTH APIs (NEW)
+
+POST   /auth/signup
+POST   /auth/login
+
+
+👨‍💼 EMPLOYEE APIs
 
 POST   /employees
 GET    /employees
@@ -55,7 +77,7 @@ PATCH  /employees/{eid}
 DELETE /employees/{eid}
 
 
-EMPLOYEE SKILL APIs (NEW)
+🧠 EMPLOYEE SKILL APIs
 
 POST   /employees/{eid}/skills
 GET    /employees/{eid}/skills
@@ -63,7 +85,7 @@ GET    /employees/{eid}/skills/details
 DELETE /employees/{eid}/skills/{skill_id}
 
 
-PROJECT APIs
+📁 PROJECT APIs
 
 POST   /projects
 GET    /projects
@@ -72,14 +94,14 @@ PUT    /projects/{pid}
 DELETE /projects/{pid}
 
 
-SKILL APIs (NEW)
+🧠 SKILL APIs
 
 POST   /skills
 GET    /skills
 DELETE /skills/{skill_id}
 
 
-RECOMMENDATION API
+🤖 RECOMMENDATION API
 
 GET /projects/{pid}/recommendations
 """
