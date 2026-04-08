@@ -1,5 +1,3 @@
-# utils/dependencies.py
-
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from utils.auth import decode_token
@@ -12,5 +10,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # 🔐 Ensure required fields exist
+    if "role" not in payload:
+        raise HTTPException(status_code=401, detail="Invalid token: role missing")
 
     return payload

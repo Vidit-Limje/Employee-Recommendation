@@ -22,4 +22,8 @@ class Employee(Base):
     user = relationship("UserAccount", back_populates="employee")
 
     # existing
-    skills = relationship("EmployeeSkill", back_populates="employee")
+    skills = relationship(
+    "EmployeeSkill",
+    back_populates="employee",
+    cascade="all, delete-orphan"
+)

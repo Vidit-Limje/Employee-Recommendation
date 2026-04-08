@@ -1,66 +1,69 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
 
 # =====================================================
-# EMPLOYEE CREATE SCHEMA
-# Used when creating a new employee
+# BASE SCHEMA (Reusable)
 # =====================================================
-class EmployeeCreate(BaseModel):
-    firstname: str
-    lastname: str
-    email: str
-    phone: str
-    domain: str
-    experience: int
-    seniority: str
+
+class EmployeeBase(BaseModel):
+    firstname: str = Field(..., min_length=1, max_length=50)
+    lastname: str = Field(..., min_length=1, max_length=50)
+    email: EmailStr
+    phone: str = Field(..., min_length=8, max_length=15)
+    domain: str = Field(..., min_length=2, max_length=100)
+    experience: int = Field(..., ge=0, le=50)
+    seniority: str = Field(..., min_length=2, max_length=50)
     availability: bool
+
+
+# =====================================================
+# EMPLOYEE CREATE SCHEMA
+# =====================================================
+
+class EmployeeCreate(EmployeeBase):
+    user_id: int = Field(..., gt=0)   # 🔐 Must be valid user
 
 
 # =====================================================
 # EMPLOYEE UPDATE (FULL UPDATE - PUT)
-# Requires all fields
 # =====================================================
-class EmployeeUpdate(BaseModel):
-    firstname: str
-    lastname: str
-    email: str
-    phone: str
-    domain: str
-    experience: int
-    seniority: str
-    availability: bool
+
+class EmployeeUpdate(EmployeeBase):
+    pass
 
 
 # =====================================================
 # EMPLOYEE PARTIAL UPDATE (PATCH)
-# Only updates provided fields
 # =====================================================
+
 class EmployeePartialUpdate(BaseModel):
-    firstname: Optional[str] = None
-    lastname: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    domain: Optional[str] = None
-    experience: Optional[int] = None
-    seniority: Optional[str] = None
+    firstname: Optional[str] = Field(None, min_length=1, max_length=50)
+    lastname: Optional[str] = Field(None, min_length=1, max_length=50)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, min_length=8, max_length=15)
+    domain: Optional[str] = Field(None, min_length=2, max_length=100)
+    experience: Optional[int] = Field(None, ge=0, le=50)
+    seniority: Optional[str] = Field(None, min_length=2, max_length=50)
     availability: Optional[bool] = None
 
 
 # =====================================================
 # EMPLOYEE RESPONSE SCHEMA
-# Used when returning employee data
 # =====================================================
+
 class EmployeeResponse(BaseModel):
     eid: int
+    user_id: Optional[int] = None
+
     firstname: str
-    lastname: str
-    email: str
-    phone: str
-    domain: str
-    experience: int
-    seniority: str
-    availability: bool
+    lastname: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    domain: Optional[str] = None
+    experience: Optional[int] = None
+    seniority: Optional[str] = None
+    availability: Optional[bool] = None
 
     class Config:
         from_attributes = True

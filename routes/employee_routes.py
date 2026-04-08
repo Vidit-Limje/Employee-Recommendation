@@ -1,5 +1,5 @@
 # =====================================================
-# EMPLOYEE ROUTES (JWT PROTECTED)
+# EMPLOYEE ROUTES (JWT + RBAC PROTECTED)
 # =====================================================
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,91 +7,72 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from models.employee import Employee
+
 from utils.dependencies import get_current_user
+from utils.permissions import require_permission
+
+from schemas.employee_schema import (
+    EmployeeResponse,
+    EmployeePartialUpdate
+)
 
 router = APIRouter(prefix="/employees", tags=["Employees"])
 
 
 # -----------------------------------------------------
-# CREATE EMPLOYEE (OPTIONAL: keep open or restrict)
+# GET ALL EMPLOYEES (ADMIN / PERMISSION BASED)
 # -----------------------------------------------------
 
-@router.post("/")
-def create_employee(employee_data: dict, db: Session = Depends(get_db)):
-    employee = Employee(**employee_data)
-    db.add(employee)
-    db.commit()
-    db.refresh(employee)
-    return employee
-
-
-# -----------------------------------------------------
-# GET ALL EMPLOYEES (Protected)
-# -----------------------------------------------------
-
-@router.get("/")
+@router.get("/", response_model=list[EmployeeResponse])
 def get_all_employees(
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(require_permission("employee.read"))
 ):
     return db.query(Employee).all()
-
-
-# -----------------------------------------------------
-# GET EMPLOYEE BY ID
-# -----------------------------------------------------
-
-@router.get("/{eid}")
-def get_employee(
-    eid: int,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user)
-):
-    employee = db.query(Employee).filter(Employee.eid == eid).first()
-
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    return employee
 
 
 # -----------------------------------------------------
 # GET CURRENT LOGGED-IN EMPLOYEE
 # -----------------------------------------------------
 
-@router.get("/me")
+@router.get("/me", response_model=EmployeeResponse)
 def get_my_profile(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    eid = user["eid"]
+    if "eid" not in user:
+        raise HTTPException(status_code=400, detail="EID missing in token")
 
-    employee = db.query(Employee).filter(Employee.eid == eid).first()
+    employee = db.query(Employee).filter(
+        Employee.eid == user["eid"]
+    ).first()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
 
     return employee
 
 
 # -----------------------------------------------------
-# UPDATE EMPLOYEE
+# UPDATE CURRENT USER PROFILE (MOST IMPORTANT)
 # -----------------------------------------------------
 
-@router.put("/{eid}")
-def update_employee(
-    eid: int,
-    updated_data: dict,
+@router.patch("/me", response_model=EmployeeResponse)
+def update_my_profile(
+    updated_data: EmployeePartialUpdate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(require_permission("employee.update"))
 ):
-    employee = db.query(Employee).filter(Employee.eid == eid).first()
+    employee = db.query(Employee).filter(
+        Employee.eid == user["eid"]
+    ).first()
 
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    # 🔐 Only allow self-update OR admin
-    if user["eid"] != eid and user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized")
+    update_data = updated_data.model_dump(exclude_unset=True)
 
-    for key, value in updated_data.items():
+    for key, value in update_data.items():
         setattr(employee, key, value)
 
     db.commit()
@@ -101,18 +82,64 @@ def update_employee(
 
 
 # -----------------------------------------------------
-# DELETE EMPLOYEE (Admin only)
+# GET EMPLOYEE BY ID (ADMIN / PERMISSION BASED)
 # -----------------------------------------------------
 
-@router.delete("/{eid}")
+@router.get("/id/{eid}", response_model=EmployeeResponse)
+def get_employee(
+    eid: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("employee.read"))
+):
+    employee = db.query(Employee).filter(Employee.eid == eid).first()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return employee
+
+
+# -----------------------------------------------------
+# UPDATE EMPLOYEE BY ID (ADMIN OR OWNER)
+# -----------------------------------------------------
+
+@router.patch("/id/{eid}", response_model=EmployeeResponse)
+def update_employee(
+    eid: int,
+    updated_data: EmployeePartialUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("employee.update"))
+):
+    employee = db.query(Employee).filter(Employee.eid == eid).first()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # 🔐 Ownership + Admin override
+    if user["role"] != "admin" and user.get("eid") != eid:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    update_data = updated_data.model_dump(exclude_unset=True)
+
+    for key, value in update_data.items():
+        setattr(employee, key, value)
+
+    db.commit()
+    db.refresh(employee)
+
+    return employee
+
+
+# -----------------------------------------------------
+# DELETE EMPLOYEE (ADMIN ONLY VIA PERMISSION)
+# -----------------------------------------------------
+
+@router.delete("/id/{eid}")
 def delete_employee(
     eid: int,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(require_permission("employee.delete"))
 ):
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
-
     employee = db.query(Employee).filter(Employee.eid == eid).first()
 
     if not employee:

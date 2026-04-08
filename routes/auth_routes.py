@@ -1,5 +1,5 @@
 # =====================================================
-# AUTH ROUTES (JWT + OAUTH2 COMPATIBLE)
+# AUTH ROUTES (JWT + OAUTH2 + RBAC READY)
 # =====================================================
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -26,7 +26,10 @@ def signup(
     db: Session = Depends(get_db)
 ):
     # 🔍 Check if user already exists
-    existing_user = db.query(UserAccount).filter(UserAccount.email == email).first()
+    existing_user = db.query(UserAccount).filter(
+        UserAccount.email == email
+    ).first()
+
     if existing_user:
         raise HTTPException(
             status_code=400,
@@ -36,21 +39,39 @@ def signup(
     # 🔐 Create user
     user = UserAccount(
         email=email,
-        password_hash=hash_password(password)
+        password_hash=hash_password(password),
+        role="employee"   # 🔥 default role
     )
+
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    # 👤 Create linked employee
+    # 👤 Create linked employee (IMPORTANT: fill required fields)
     employee = Employee(
+        user_id=user.user_id,
         firstname=firstname,
-        user_id=user.user_id
+        lastname="",
+        email=email,
+        phone="",
+        domain="",
+        experience=0,
+        seniority="junior",
+        availability=True
     )
+
     db.add(employee)
     db.commit()
+    db.refresh(employee)
 
-    return {"message": "User created successfully"}
+    # 🎟️ Create JWT immediately (better UX)
+    token = create_token(user, employee)
+
+    return {
+        "message": "User created successfully",
+        "access_token": token,
+        "token_type": "bearer"
+    }
 
 
 # -----------------------------------------------------
@@ -62,12 +83,18 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    # ⚠️ Swagger sends "username" → we treat it as email
+    # ⚠️ Swagger uses "username" → treat as email
     user = db.query(UserAccount).filter(
         UserAccount.email == form_data.username
     ).first()
 
-    if not user or not verify_password(form_data.password, user.password_hash):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+
+    if not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -80,11 +107,11 @@ def login(
 
     if not employee:
         raise HTTPException(
-            status_code=404,
-            detail="Employee not found"
+            status_code=500,
+            detail="Employee profile not found"
         )
 
-    # 🎟️ Create JWT
+    # 🎟️ Create JWT (MUST include role + eid)
     token = create_token(user, employee)
 
     return {
