@@ -61,7 +61,7 @@ def get_my_profile(
 def update_my_profile(
     updated_data: EmployeePartialUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("employee.update"))
+    user=Depends(get_current_user)   # ✅ FIXED
 ):
     employee = db.query(Employee).filter(
         Employee.eid == user["eid"]
