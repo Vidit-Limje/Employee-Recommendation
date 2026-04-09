@@ -1,15 +1,17 @@
 # =====================================================
-# EMPLOYEE ROUTES (JWT + RBAC PROTECTED)
+# EMPLOYEE ROUTES (JWT + RBAC + REDIS CACHE)
 # =====================================================
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import json
 
 from database.database import get_db
 from models.employee import Employee
 
 from utils.dependencies import get_current_user
 from utils.permissions import require_permission
+from utils.redis_client import redis_client
 
 from schemas.employee_schema import (
     EmployeeResponse,
@@ -20,7 +22,7 @@ router = APIRouter(prefix="/employees", tags=["Employees"])
 
 
 # -----------------------------------------------------
-# GET ALL EMPLOYEES (ADMIN / PERMISSION BASED)
+# GET ALL EMPLOYEES (CACHED)
 # -----------------------------------------------------
 
 @router.get("/", response_model=list[EmployeeResponse])
@@ -28,7 +30,26 @@ def get_all_employees(
     db: Session = Depends(get_db),
     user=Depends(require_permission("employee.read"))
 ):
-    return db.query(Employee).all()
+    cache_key = "employees:all"
+
+    # 🔍 Try Redis
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # 🧠 DB fetch
+    employees = db.query(Employee).all()
+
+    # ✅ FIX: Use Pydantic schema
+    data = [
+        EmployeeResponse.model_validate(emp).model_dump()
+        for emp in employees
+    ]
+
+    # 💾 Store in Redis
+    redis_client.setex(cache_key, 300, json.dumps(data))
+
+    return data
 
 
 # -----------------------------------------------------
@@ -54,14 +75,14 @@ def get_my_profile(
 
 
 # -----------------------------------------------------
-# UPDATE CURRENT USER PROFILE (MOST IMPORTANT)
+# UPDATE CURRENT USER PROFILE
 # -----------------------------------------------------
 
 @router.patch("/me", response_model=EmployeeResponse)
 def update_my_profile(
     updated_data: EmployeePartialUpdate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)   # ✅ FIXED
+    user=Depends(get_current_user)
 ):
     employee = db.query(Employee).filter(
         Employee.eid == user["eid"]
@@ -78,11 +99,17 @@ def update_my_profile(
     db.commit()
     db.refresh(employee)
 
+    # 🔥 CACHE INVALIDATION
+    redis_client.delete("employees:all")
+
+    for key in redis_client.scan_iter("project:*:recommendations"):
+        redis_client.delete(key)
+
     return employee
 
 
 # -----------------------------------------------------
-# GET EMPLOYEE BY ID (ADMIN / PERMISSION BASED)
+# GET EMPLOYEE BY ID
 # -----------------------------------------------------
 
 @router.get("/id/{eid}", response_model=EmployeeResponse)
@@ -100,7 +127,7 @@ def get_employee(
 
 
 # -----------------------------------------------------
-# UPDATE EMPLOYEE BY ID (ADMIN OR OWNER)
+# UPDATE EMPLOYEE BY ID
 # -----------------------------------------------------
 
 @router.patch("/id/{eid}", response_model=EmployeeResponse)
@@ -127,11 +154,17 @@ def update_employee(
     db.commit()
     db.refresh(employee)
 
+    # 🔥 CACHE INVALIDATION
+    redis_client.delete("employees:all")
+
+    for key in redis_client.scan_iter("project:*:recommendations"):
+        redis_client.delete(key)
+
     return employee
 
 
 # -----------------------------------------------------
-# DELETE EMPLOYEE (ADMIN ONLY VIA PERMISSION)
+# DELETE EMPLOYEE
 # -----------------------------------------------------
 
 @router.delete("/id/{eid}")
@@ -147,5 +180,11 @@ def delete_employee(
 
     db.delete(employee)
     db.commit()
+
+    # 🔥 CACHE INVALIDATION
+    redis_client.delete("employees:all")
+
+    for key in redis_client.scan_iter("project:*:recommendations"):
+        redis_client.delete(key)
 
     return {"message": "Employee deleted successfully"}

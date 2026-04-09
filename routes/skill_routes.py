@@ -1,5 +1,10 @@
+# =====================================================
+# SKILL ROUTES (JWT + RBAC + REDIS CACHE)
+# =====================================================
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import json
 
 from database.database import get_db
 from models.skill import Skill
@@ -7,6 +12,9 @@ from schemas.skill_schema import SkillCreate, SkillResponse
 
 # 🔐 RBAC
 from utils.permissions import require_permission
+
+# 🔥 REDIS
+from utils.redis_client import redis_client
 
 
 router = APIRouter(prefix="/skills", tags=["Skills"])
@@ -19,9 +27,9 @@ router = APIRouter(prefix="/skills", tags=["Skills"])
 def create_skill(
     skill: SkillCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("skill.create"))   # 🔐
+    user=Depends(require_permission("skill.create"))
 ):
-    # Check duplicate
+    # 🔍 Check duplicate
     existing = db.query(Skill).filter_by(skill_name=skill.skill_name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Skill already exists")
@@ -32,18 +40,43 @@ def create_skill(
     db.commit()
     db.refresh(new_skill)
 
+    # 🔥 CACHE INVALIDATION
+    redis_client.delete("skills:all")
+
+    for key in redis_client.scan_iter("project:*:recommendations"):
+        redis_client.delete(key)
+
     return new_skill
 
 
 # -----------------------------------------------------------
-# GET ALL SKILLS (ALL USERS)
+# GET ALL SKILLS (CACHED)
 # -----------------------------------------------------------
 @router.get("/", response_model=list[SkillResponse])
 def get_skills(
     db: Session = Depends(get_db),
-    user=Depends(require_permission("skill.read"))   # 🔐
+    user=Depends(require_permission("skill.read"))
 ):
-    return db.query(Skill).all()
+    cache_key = "skills:all"
+
+    # 🔍 Try Redis
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # 🧠 DB fetch
+    skills = db.query(Skill).all()
+
+    # ✅ FIX: Use Pydantic
+    data = [
+        SkillResponse.model_validate(s).model_dump()
+        for s in skills
+    ]
+
+    # 💾 Store in Redis
+    redis_client.setex(cache_key, 300, json.dumps(data))
+
+    return data
 
 
 # -----------------------------------------------------------
@@ -53,7 +86,7 @@ def get_skills(
 def delete_skill(
     skill_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("skill.delete"))   # 🔐
+    user=Depends(require_permission("skill.delete"))
 ):
     skill = db.get(Skill, skill_id)
     if not skill:
@@ -61,5 +94,11 @@ def delete_skill(
 
     db.delete(skill)
     db.commit()
+
+    # 🔥 CACHE INVALIDATION
+    redis_client.delete("skills:all")
+
+    for key in redis_client.scan_iter("project:*:recommendations"):
+        redis_client.delete(key)
 
     return {"message": "Skill deleted"}

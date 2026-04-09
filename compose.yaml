@@ -15,6 +15,13 @@ services:
       - 9000:9000
     env_file:
       - .env
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
+    ports:
+      - 6379:6379
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to

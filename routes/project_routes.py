@@ -4,6 +4,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import json
 
 from database.database import get_db
 from models.project import Project
@@ -13,7 +14,6 @@ from models.skill import Skill
 from schemas.project_schema import (
     ProjectCreate,
     ProjectUpdate,
-    ProjectPartialUpdate,
     ProjectResponse
 )
 
@@ -26,6 +26,9 @@ from services.recommendation_service import recommend_employees_service
 
 # 🔐 RBAC
 from utils.permissions import require_permission
+
+# 🔥 REDIS
+from utils.redis_client import redis_client
 
 
 # -----------------------------------------------------------
@@ -43,7 +46,7 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 def create_project(
     project: ProjectCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project.create"))   # 🔐
+    user=Depends(require_permission("project.create"))
 ):
     new_project = Project(**project.model_dump())
 
@@ -51,30 +54,48 @@ def create_project(
     db.commit()
     db.refresh(new_project)
 
+    redis_client.delete("projects:all")
+
     return new_project
 
 
 # -----------------------------------------------------------
-# GET ALL PROJECTS (ALL USERS)
+# GET ALL PROJECTS (CACHED)
 # -----------------------------------------------------------
 
 @router.get("/", response_model=list[ProjectResponse])
 def get_projects(
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project.read"))   # 🔐
+    user=Depends(require_permission("project.read"))
 ):
-    return db.query(Project).all()
+    cache_key = "projects:all"
+
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    projects = db.query(Project).all()
+
+    # ✅ FIX: Use Pydantic
+    data = [
+        ProjectResponse.model_validate(p).model_dump()
+        for p in projects
+    ]
+
+    redis_client.setex(cache_key, 300, json.dumps(data))
+
+    return data
 
 
 # -----------------------------------------------------------
-# GET PROJECT BY ID (ALL USERS)
+# GET PROJECT BY ID
 # -----------------------------------------------------------
 
 @router.get("/{pid}", response_model=ProjectResponse)
 def get_project(
     pid: int,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project.read"))   # 🔐
+    user=Depends(require_permission("project.read"))
 ):
     project = db.get(Project, pid)
 
@@ -85,7 +106,7 @@ def get_project(
 
 
 # -----------------------------------------------------------
-# UPDATE PROJECT (ADMIN ONLY)
+# UPDATE PROJECT
 # -----------------------------------------------------------
 
 @router.put("/{pid}", response_model=ProjectResponse)
@@ -93,7 +114,7 @@ def update_project(
     pid: int,
     project: ProjectUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project.update"))   # 🔐
+    user=Depends(require_permission("project.update"))
 ):
     proj = db.get(Project, pid)
 
@@ -106,18 +127,21 @@ def update_project(
     db.commit()
     db.refresh(proj)
 
+    redis_client.delete("projects:all")
+    redis_client.delete(f"project:{pid}:recommendations")
+
     return proj
 
 
 # -----------------------------------------------------------
-# DELETE PROJECT (ADMIN ONLY)
+# DELETE PROJECT
 # -----------------------------------------------------------
 
 @router.delete("/{pid}")
 def delete_project(
     pid: int,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project.delete"))   # 🔐
+    user=Depends(require_permission("project.delete"))
 ):
     proj = db.get(Project, pid)
 
@@ -127,24 +151,37 @@ def delete_project(
     db.delete(proj)
     db.commit()
 
+    redis_client.delete("projects:all")
+    redis_client.delete(f"project:{pid}:recommendations")
+
     return {"message": f"Project {pid} deleted successfully"}
 
 
 # -----------------------------------------------------------
-# RECOMMEND EMPLOYEES (ALL USERS)
+# RECOMMEND EMPLOYEES (CACHED)
 # -----------------------------------------------------------
 
 @router.get("/{pid}/recommendations")
 def recommend_employees(
     pid: int,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("recommendation.read"))   # 🔐
+    user=Depends(require_permission("recommendation.read"))
 ):
-    return recommend_employees_service(pid, db)
+    cache_key = f"project:{pid}:recommendations"
+
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    result = recommend_employees_service(pid, db)
+
+    redis_client.setex(cache_key, 300, json.dumps(result))
+
+    return result
 
 
 # -----------------------------------------------------------
-# ADD SKILL TO PROJECT (ADMIN ONLY)
+# ADD SKILL TO PROJECT
 # -----------------------------------------------------------
 
 @router.post("/{pid}/skills", response_model=ProjectSkillResponse)
@@ -152,7 +189,7 @@ def add_project_skill(
     pid: int,
     data: ProjectSkillCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project_skill.manage"))   # 🔐
+    user=Depends(require_permission("project_skill.manage"))
 ):
     project = db.get(Project, pid)
     if not project:
@@ -180,18 +217,20 @@ def add_project_skill(
     db.commit()
     db.refresh(project_skill)
 
+    redis_client.delete(f"project:{pid}:recommendations")
+
     return project_skill
 
 
 # -----------------------------------------------------------
-# GET PROJECT SKILLS (ALL USERS)
+# GET PROJECT SKILLS
 # -----------------------------------------------------------
 
 @router.get("/{pid}/skills", response_model=list[ProjectSkillResponse])
 def get_project_skills(
     pid: int,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project.read"))   # 🔐
+    user=Depends(require_permission("project.read"))
 ):
     project = db.get(Project, pid)
     if not project:
@@ -201,7 +240,7 @@ def get_project_skills(
 
 
 # -----------------------------------------------------------
-# UPDATE PROJECT SKILL (ADMIN ONLY)
+# UPDATE PROJECT SKILL
 # -----------------------------------------------------------
 
 @router.patch("/{pid}/skills/{skill_id}", response_model=ProjectSkillResponse)
@@ -210,7 +249,7 @@ def update_project_skill(
     skill_id: int,
     data: ProjectSkillCreate,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project_skill.manage"))   # 🔐
+    user=Depends(require_permission("project_skill.manage"))
 ):
     project_skill = db.query(ProjectSkill).filter(
         ProjectSkill.pid == pid,
@@ -225,11 +264,13 @@ def update_project_skill(
     db.commit()
     db.refresh(project_skill)
 
+    redis_client.delete(f"project:{pid}:recommendations")
+
     return project_skill
 
 
 # -----------------------------------------------------------
-# DELETE PROJECT SKILL (ADMIN ONLY)
+# DELETE PROJECT SKILL
 # -----------------------------------------------------------
 
 @router.delete("/{pid}/skills/{skill_id}")
@@ -237,7 +278,7 @@ def delete_project_skill(
     pid: int,
     skill_id: int,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("project_skill.manage"))   # 🔐
+    user=Depends(require_permission("project_skill.manage"))
 ):
     project_skill = db.query(ProjectSkill).filter(
         ProjectSkill.pid == pid,
@@ -249,5 +290,7 @@ def delete_project_skill(
 
     db.delete(project_skill)
     db.commit()
+
+    redis_client.delete(f"project:{pid}:recommendations")
 
     return {"message": "Skill removed"}

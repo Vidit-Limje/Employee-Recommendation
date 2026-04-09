@@ -4,7 +4,6 @@
 
 from fastapi import FastAPI
 
-
 # -----------------------------------------------------
 # IMPORT ROUTERS
 # -----------------------------------------------------
@@ -12,8 +11,15 @@ from fastapi import FastAPI
 from routes.employee_routes import router as employee_router
 from routes.project_routes import router as project_router
 from routes.skill_routes import router as skill_router
-from routes.auth_routes import router as auth_router   # ✅ NEW
+from routes.auth_routes import router as auth_router
 
+# -----------------------------------------------------
+# REDIS + DB + CACHE IMPORTS
+# -----------------------------------------------------
+
+from utils.redis_client import redis_client
+from database.database import SessionLocal
+from utils.permissions import get_permissions_for_role
 
 # -----------------------------------------------------
 # CREATE FASTAPI APP
@@ -21,16 +27,46 @@ from routes.auth_routes import router as auth_router   # ✅ NEW
 
 app = FastAPI(
     title="Employee Recommendation System",
-    description="API to manage employees, skills, and recommend them for projects with JWT Authentication",
-    version="2.0"   # ✅ bumped version
+    description="API to manage employees, skills, and recommend them for projects with JWT Authentication + Redis Caching",
+    version="3.0"   # 🚀 bumped version
 )
+
+# -----------------------------------------------------
+# STARTUP EVENTS (CACHE WARMING + HEALTH CHECK)
+# -----------------------------------------------------
+
+@app.on_event("startup")
+def startup_event():
+    print("🚀 Starting application...")
+
+    # ✅ Check Redis connection
+    try:
+        redis_client.ping()
+        print("✅ Redis connected successfully")
+    except Exception as e:
+        print("❌ Redis connection failed:", e)
+
+    # ✅ Warm RBAC cache (preload permissions)
+    try:
+        db = SessionLocal()
+
+        roles = ["admin", "employee"]  # adjust if needed
+
+        for role in roles:
+            get_permissions_for_role(role, db)
+
+        db.close()
+        print("🔥 RBAC cache warmed successfully")
+
+    except Exception as e:
+        print("❌ Cache warming failed:", e)
 
 
 # -----------------------------------------------------
 # REGISTER ROUTES
 # -----------------------------------------------------
 
-# 🔐 Auth Routes (IMPORTANT: keep first for clarity)
+# 🔐 Auth Routes
 app.include_router(auth_router)
 
 # 👨‍💼 Employee Routes
@@ -44,15 +80,45 @@ app.include_router(skill_router)
 
 
 # =====================================================
-# ROOT ENDPOINT (OPTIONAL BUT USEFUL)
+# ROOT ENDPOINT
 # =====================================================
 
 @app.get("/")
 def root():
     return {
-        "message": "Employee Recommendation API with JWT Auth is running 🚀",
-        "docs": "/docs"
+        "message": "Employee Recommendation API with JWT + Redis is running 🚀",
+        "docs": "/docs",
+        "health": "/health"
     }
+
+
+# =====================================================
+# HEALTH CHECK ENDPOINTS (PRODUCTION STANDARD)
+# =====================================================
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "OK",
+        "services": {
+            "api": "running"
+        }
+    }
+
+
+@app.get("/health/redis")
+def redis_health():
+    try:
+        redis_client.ping()
+        return {
+            "status": "OK",
+            "redis": "connected"
+        }
+    except Exception:
+        return {
+            "status": "ERROR",
+            "redis": "not connected"
+        }
 
 
 # =====================================================
@@ -60,7 +126,7 @@ def root():
 # =====================================================
 
 """
-🔐 AUTH APIs (NEW)
+🔐 AUTH APIs
 
 POST   /auth/signup
 POST   /auth/login
@@ -68,21 +134,19 @@ POST   /auth/login
 
 👨‍💼 EMPLOYEE APIs
 
-POST   /employees
 GET    /employees
-GET    /employees/search
-GET    /employees/{eid}
-PUT    /employees/{eid}
-PATCH  /employees/{eid}
-DELETE /employees/{eid}
+GET    /employees/me
+PATCH  /employees/me
+GET    /employees/id/{eid}
+PATCH  /employees/id/{eid}
+DELETE /employees/id/{eid}
 
 
-🧠 EMPLOYEE SKILL APIs
+🧠 SKILL APIs
 
-POST   /employees/{eid}/skills
-GET    /employees/{eid}/skills
-GET    /employees/{eid}/skills/details
-DELETE /employees/{eid}/skills/{skill_id}
+POST   /skills
+GET    /skills
+DELETE /skills/{skill_id}
 
 
 📁 PROJECT APIs
@@ -92,13 +156,6 @@ GET    /projects
 GET    /projects/{pid}
 PUT    /projects/{pid}
 DELETE /projects/{pid}
-
-
-🧠 SKILL APIs
-
-POST   /skills
-GET    /skills
-DELETE /skills/{skill_id}
 
 
 🤖 RECOMMENDATION API

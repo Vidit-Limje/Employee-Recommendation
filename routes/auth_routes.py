@@ -1,5 +1,5 @@
 # =====================================================
-# AUTH ROUTES (JWT + OAUTH2 + RBAC READY)
+# AUTH ROUTES (JWT + OAUTH2 + REDIS-AWARE)
 # =====================================================
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,7 +9,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from database.database import get_db
 from models.user_account import UserAccount
 from models.employee import Employee
+
 from utils.auth import hash_password, verify_password, create_token
+from utils.redis_client import redis_client   # 🔥 NEW
+from utils.permissions import get_permissions_for_role  # 🔥 NEW
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -40,14 +43,14 @@ def signup(
     user = UserAccount(
         email=email,
         password_hash=hash_password(password),
-        role="employee"   # 🔥 default role
+        role="employee"
     )
 
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    # 👤 Create linked employee (IMPORTANT: fill required fields)
+    # 👤 Create employee profile
     employee = Employee(
         user_id=user.user_id,
         firstname=firstname,
@@ -64,7 +67,10 @@ def signup(
     db.commit()
     db.refresh(employee)
 
-    # 🎟️ Create JWT immediately (better UX)
+    # 🔥 CACHE INVALIDATION (RBAC)
+    redis_client.delete(f"role:{user.role}:permissions")
+
+    # 🎟️ Create JWT
     token = create_token(user, employee)
 
     return {
@@ -111,7 +117,10 @@ def login(
             detail="Employee profile not found"
         )
 
-    # 🎟️ Create JWT (MUST include role + eid)
+    # 🔥 OPTIONAL: Warm RBAC cache (performance boost)
+    get_permissions_for_role(user.role, db)
+
+    # 🎟️ Create JWT
     token = create_token(user, employee)
 
     return {
