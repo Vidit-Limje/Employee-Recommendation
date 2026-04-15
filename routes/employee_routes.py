@@ -1,8 +1,8 @@
 # =====================================================
-# EMPLOYEE ROUTES (JWT + RBAC + REDIS CACHE)
+# EMPLOYEE ROUTES (JWT + RBAC + REDIS + RATE LIMITING)
 # =====================================================
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import json
 
@@ -12,13 +12,19 @@ from models.employee import Employee
 from utils.dependencies import get_current_user
 from utils.permissions import require_permission
 from utils.redis_client import redis_client
+from utils.rate_limiter import rate_limiter   # 🔥 NEW
 
 from schemas.employee_schema import (
     EmployeeResponse,
     EmployeePartialUpdate
 )
 
-router = APIRouter(prefix="/employees", tags=["Employees"])
+# 🔥 Apply rate limiter to ALL employee routes
+router = APIRouter(
+    prefix="/employees",
+    tags=["Employees"],
+    dependencies=[Depends(rate_limiter)]
+)
 
 
 # -----------------------------------------------------
@@ -27,6 +33,7 @@ router = APIRouter(prefix="/employees", tags=["Employees"])
 
 @router.get("/", response_model=list[EmployeeResponse])
 def get_all_employees(
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(require_permission("employee.read"))
 ):
@@ -40,7 +47,6 @@ def get_all_employees(
     # 🧠 DB fetch
     employees = db.query(Employee).all()
 
-    # ✅ FIX: Use Pydantic schema
     data = [
         EmployeeResponse.model_validate(emp).model_dump()
         for emp in employees
@@ -58,6 +64,7 @@ def get_all_employees(
 
 @router.get("/me", response_model=EmployeeResponse)
 def get_my_profile(
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -80,6 +87,7 @@ def get_my_profile(
 
 @router.patch("/me", response_model=EmployeeResponse)
 def update_my_profile(
+    request: Request,
     updated_data: EmployeePartialUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
@@ -114,6 +122,7 @@ def update_my_profile(
 
 @router.get("/id/{eid}", response_model=EmployeeResponse)
 def get_employee(
+    request: Request,
     eid: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("employee.read"))
@@ -132,6 +141,7 @@ def get_employee(
 
 @router.patch("/id/{eid}", response_model=EmployeeResponse)
 def update_employee(
+    request: Request,
     eid: int,
     updated_data: EmployeePartialUpdate,
     db: Session = Depends(get_db),
@@ -169,6 +179,7 @@ def update_employee(
 
 @router.delete("/id/{eid}")
 def delete_employee(
+    request: Request,
     eid: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("employee.delete"))

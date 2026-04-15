@@ -1,8 +1,8 @@
 # =====================================================
-# AUTH ROUTES (JWT + OAUTH2 + REDIS-AWARE)
+# AUTH ROUTES (JWT + OAUTH2 + REDIS + RATE LIMITING)
 # =====================================================
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -11,23 +11,33 @@ from models.user_account import UserAccount
 from models.employee import Employee
 
 from utils.auth import hash_password, verify_password, create_token
-from utils.redis_client import redis_client   # 🔥 NEW
-from utils.permissions import get_permissions_for_role  # 🔥 NEW
+from utils.redis_client import redis_client
+from utils.permissions import get_permissions_for_role
+from utils.rate_limiter import rate_limiter   # 🔥 NEW
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["Auth"]
+)
 
 
 # -----------------------------------------------------
-# SIGNUP
+# SIGNUP (RATE LIMITED)
 # -----------------------------------------------------
 
-@router.post("/signup")
+@router.post("/signup", dependencies=[Depends(rate_limiter)])
 def signup(
+    request: Request,
     email: str,
     password: str,
     firstname: str,
     db: Session = Depends(get_db)
 ):
+    """
+    Creates a new user + employee profile
+    Applies rate limiting to prevent abuse
+    """
+
     # 🔍 Check if user already exists
     existing_user = db.query(UserAccount).filter(
         UserAccount.email == email
@@ -81,14 +91,20 @@ def signup(
 
 
 # -----------------------------------------------------
-# LOGIN (OAUTH2 COMPATIBLE)
+# LOGIN (STRICT RATE LIMITED - SECURITY CRITICAL)
 # -----------------------------------------------------
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limiter)])
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    """
+    OAuth2 compatible login
+    Strong rate limiting applied to prevent brute force attacks
+    """
+
     # ⚠️ Swagger uses "username" → treat as email
     user = db.query(UserAccount).filter(
         UserAccount.email == form_data.username
@@ -117,7 +133,7 @@ def login(
             detail="Employee profile not found"
         )
 
-    # 🔥 OPTIONAL: Warm RBAC cache (performance boost)
+    # 🔥 Warm RBAC cache (performance boost)
     get_permissions_for_role(user.role, db)
 
     # 🎟️ Create JWT

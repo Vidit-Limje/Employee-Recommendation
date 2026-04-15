@@ -1,8 +1,9 @@
 import redis
+import os
 
-redis_client = redis.Redis(
-    host="redis",   # change if using docker/cloud
-    port=6379,
-    db=0,
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+
+redis_client = redis.from_url(
+    REDIS_URL,
     decode_responses=True
 )

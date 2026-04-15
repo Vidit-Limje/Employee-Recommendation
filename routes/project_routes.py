@@ -1,8 +1,8 @@
-# -----------------------------------------------------------
-# IMPORTS
-# -----------------------------------------------------------
+# =====================================================
+# PROJECT ROUTES (RBAC + REDIS + RATE LIMITING)
+# =====================================================
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import json
 
@@ -30,12 +30,19 @@ from utils.permissions import require_permission
 # 🔥 REDIS
 from utils.redis_client import redis_client
 
+# 🔥 RATE LIMITER
+from utils.rate_limiter import rate_limiter
+
 
 # -----------------------------------------------------------
-# ROUTER CONFIG
+# ROUTER CONFIG (RATE LIMIT APPLIED GLOBALLY)
 # -----------------------------------------------------------
 
-router = APIRouter(prefix="/projects", tags=["Projects"])
+router = APIRouter(
+    prefix="/projects",
+    tags=["Projects"],
+    dependencies=[Depends(rate_limiter)]   # 🔥 APPLY TO ALL ROUTES
+)
 
 
 # -----------------------------------------------------------
@@ -44,6 +51,7 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 @router.post("/", response_model=ProjectResponse, status_code=201)
 def create_project(
+    request: Request,
     project: ProjectCreate,
     db: Session = Depends(get_db),
     user=Depends(require_permission("project.create"))
@@ -65,6 +73,7 @@ def create_project(
 
 @router.get("/", response_model=list[ProjectResponse])
 def get_projects(
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(require_permission("project.read"))
 ):
@@ -76,7 +85,6 @@ def get_projects(
 
     projects = db.query(Project).all()
 
-    # ✅ FIX: Use Pydantic
     data = [
         ProjectResponse.model_validate(p).model_dump()
         for p in projects
@@ -93,6 +101,7 @@ def get_projects(
 
 @router.get("/{pid}", response_model=ProjectResponse)
 def get_project(
+    request: Request,
     pid: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("project.read"))
@@ -111,6 +120,7 @@ def get_project(
 
 @router.put("/{pid}", response_model=ProjectResponse)
 def update_project(
+    request: Request,
     pid: int,
     project: ProjectUpdate,
     db: Session = Depends(get_db),
@@ -139,6 +149,7 @@ def update_project(
 
 @router.delete("/{pid}")
 def delete_project(
+    request: Request,
     pid: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("project.delete"))
@@ -163,6 +174,7 @@ def delete_project(
 
 @router.get("/{pid}/recommendations")
 def recommend_employees(
+    request: Request,
     pid: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("recommendation.read"))
@@ -186,6 +198,7 @@ def recommend_employees(
 
 @router.post("/{pid}/skills", response_model=ProjectSkillResponse)
 def add_project_skill(
+    request: Request,
     pid: int,
     data: ProjectSkillCreate,
     db: Session = Depends(get_db),
@@ -228,6 +241,7 @@ def add_project_skill(
 
 @router.get("/{pid}/skills", response_model=list[ProjectSkillResponse])
 def get_project_skills(
+    request: Request,
     pid: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("project.read"))
@@ -245,6 +259,7 @@ def get_project_skills(
 
 @router.patch("/{pid}/skills/{skill_id}", response_model=ProjectSkillResponse)
 def update_project_skill(
+    request: Request,
     pid: int,
     skill_id: int,
     data: ProjectSkillCreate,
@@ -275,6 +290,7 @@ def update_project_skill(
 
 @router.delete("/{pid}/skills/{skill_id}")
 def delete_project_skill(
+    request: Request,
     pid: int,
     skill_id: int,
     db: Session = Depends(get_db),

@@ -1,8 +1,8 @@
 # =====================================================
-# SKILL ROUTES (JWT + RBAC + REDIS CACHE)
+# SKILL ROUTES (RBAC + REDIS + RATE LIMITING)
 # =====================================================
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import json
 
@@ -16,8 +16,19 @@ from utils.permissions import require_permission
 # 🔥 REDIS
 from utils.redis_client import redis_client
 
+# 🔥 RATE LIMITER
+from utils.rate_limiter import rate_limiter
 
-router = APIRouter(prefix="/skills", tags=["Skills"])
+
+# -----------------------------------------------------
+# ROUTER CONFIG (RATE LIMIT APPLIED GLOBALLY)
+# -----------------------------------------------------
+
+router = APIRouter(
+    prefix="/skills",
+    tags=["Skills"],
+    dependencies=[Depends(rate_limiter)]   # 🔥 APPLY TO ALL ROUTES
+)
 
 
 # -----------------------------------------------------------
@@ -25,6 +36,7 @@ router = APIRouter(prefix="/skills", tags=["Skills"])
 # -----------------------------------------------------------
 @router.post("/", response_model=SkillResponse, status_code=201)
 def create_skill(
+    request: Request,
     skill: SkillCreate,
     db: Session = Depends(get_db),
     user=Depends(require_permission("skill.create"))
@@ -54,6 +66,7 @@ def create_skill(
 # -----------------------------------------------------------
 @router.get("/", response_model=list[SkillResponse])
 def get_skills(
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(require_permission("skill.read"))
 ):
@@ -67,7 +80,6 @@ def get_skills(
     # 🧠 DB fetch
     skills = db.query(Skill).all()
 
-    # ✅ FIX: Use Pydantic
     data = [
         SkillResponse.model_validate(s).model_dump()
         for s in skills
@@ -84,6 +96,7 @@ def get_skills(
 # -----------------------------------------------------------
 @router.delete("/{skill_id}")
 def delete_skill(
+    request: Request,
     skill_id: int,
     db: Session = Depends(get_db),
     user=Depends(require_permission("skill.delete"))

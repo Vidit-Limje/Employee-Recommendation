@@ -42,7 +42,8 @@ def create_token(user, employee):
     now = datetime.now(timezone.utc)
 
     payload = {
-        "sub": str(user.user_id),   # JWT standard expects string
+        "sub": str(user.user_id),   # keep for JWT standard
+        "user_id": user.user_id,    # 🔥 ADD THIS (required for your system)
         "eid": employee.eid,
         "role": user.role,
         "iat": now,
